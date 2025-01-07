@@ -33,7 +33,7 @@ void WindowManager::run() {
   
   uint32_t root_mask   = XCB_CW_BACK_PIXEL | XCB_CW_EVENT_MASK;
   uint32_t mask_val[2] = { 
-    0xff75f086, XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT | XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY | XCB_EVENT_MASK_EXPOSURE
+    0xff9da1cd, XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT | XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY | XCB_EVENT_MASK_EXPOSURE
   };
 
   xcb_void_cookie_t chwin_cookie = xcb_change_window_attributes_checked(m_connection, *m_root, root_mask, mask_val);
@@ -220,13 +220,9 @@ void WindowManager::on_motion_notify(xcb_motion_notify_event_t* event) {
 }
 
 void WindowManager::frame(xcb_window_t window, bool was_created_before_window_manager) {
-  // const uint32_t border_width = 2;
-  // const uint64_t border_color = 0xFF222222;
-  // const uint64_t back_color = 0xFF222222;
-
-  const uint32_t border_width = 10;  // Increased border width
-  const uint32_t border_color = 0xFF0000;  // Pure red, simpler color format
-  const uint32_t back_color = 0x222222;    // Dark gray background
+  const uint32_t border_width = 2;
+  const uint64_t border_color = 0xFF222222;
+  const uint64_t back_color = 0xFF222222;
 
   /* Retreive window attribute for the frame */
   xcb_get_window_attributes_cookie_t winattr_cookie = xcb_get_window_attributes(m_connection, window);
