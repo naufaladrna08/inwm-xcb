@@ -5,4 +5,5 @@ xeyes &
 sleep 2 && xterm &
 
 # 2. Start our window manager.
+exec ./inpanel &
 exec ./inwm

@@ -44,6 +44,7 @@ class WindowManager {
 
 		void frame(xcb_window_t window, bool was_created_before_window_manager);
 		void unframe(xcb_window_t window);
+		xcb_atom_t get_atom(const char* atom_name);
 		
 	private:
 		WindowManager(xcb_connection_t* conn);
