@@ -104,6 +104,8 @@ void WindowManager::run() {
 
     free(event);
   }
+
+  free(m_ewmh);
 }
 
 void WindowManager::check_another_wm(xcb_connection_t* conn, xcb_generic_error_t* err) {
@@ -130,7 +132,7 @@ void WindowManager::on_reparent_notify(xcb_reparent_notify_event_t* event) {
 
 void WindowManager::on_configure_request(xcb_configure_request_event_t* e) {
   uint16_t mask = 0;   // Will hold which values we're actually changing
-  uint32_t values[7];  // Values buffer for configure window
+  uint32_t values[8];  // Values buffer for configure window
 
   // Copy fields and set corresponding mask bits
   if (e->value_mask & XCB_CONFIG_WINDOW_X) {
@@ -224,26 +226,12 @@ void WindowManager::on_motion_notify(xcb_motion_notify_event_t* event) {
 }
 
 void WindowManager::frame(xcb_window_t window, bool was_created_before_window_manager) {
-  const uint32_t border_width = 2;
+  const uint32_t border_width = 1;
   const uint64_t border_color = 0xFF222222;
   const uint64_t back_color = 0xFF222222;
 
-  // Get window type
-  xcb_atom_t window_type = get_atom(m_connection, "_NET_WM_WINDOW_TYPE");
-  xcb_get_property_cookie_t type_cookie = xcb_get_property(m_connection, 0, window, window_type, XCB_ATOM_ATOM, 0, 1);
-  
-  // Get struts
-  xcb_atom_t strut_partial = get_atom(m_connection, "_NET_WM_STRUT_PARTIAL");
-  xcb_get_property_cookie_t strut_cookie = xcb_get_property(m_connection, 0, window, strut_partial, XCB_ATOM_CARDINAL, 0, 12);
-      
-  xcb_get_property_reply_t* type_reply = xcb_get_property_reply(m_connection, type_cookie, NULL);
-  xcb_get_property_reply_t* strut_reply = xcb_get_property_reply(m_connection, strut_cookie, NULL);
-
-  uint32_t top_strut = 0;
-  if (strut_reply && xcb_get_property_value_length(strut_reply) >= 12 * 4) {
-    uint32_t* struts = (uint32_t*)xcb_get_property_value(strut_reply);
-    top_strut = struts[2];  // Top strut
-  }
+  uint32_t work_x, work_y, work_width, work_height;
+  get_workarea(&work_x, &work_y, &work_width, &work_height);  
   
   /* Retreive window attribute for the frame */
   xcb_get_window_attributes_cookie_t winattr_cookie = xcb_get_window_attributes(m_connection, window);
@@ -260,13 +248,17 @@ void WindowManager::frame(xcb_window_t window, bool was_created_before_window_ma
     free(geomattr);
     return;
   }
+  
+  if (geomattr->y < work_y) {
+    geomattr->y = work_y;
+  }
 
   if (was_created_before_window_manager) {
     if (winattr->override_redirect || winattr->map_state != XCB_MAP_STATE_VIEWABLE) return; 
   }
 
   uint32_t mask = XCB_CW_BORDER_PIXEL | XCB_CW_BACK_PIXEL | XCB_CW_EVENT_MASK | XCB_CW_CURSOR;
-  uint32_t values[3];
+  uint32_t values[4];
   values[0] = border_color;
   values[1] = back_color;
   values[2] = XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT | 
@@ -287,7 +279,7 @@ void WindowManager::frame(xcb_window_t window, bool was_created_before_window_ma
   
   xcb_window_t frame = xcb_generate_id(m_connection);
   xcb_void_cookie_t framewin_cookie = xcb_create_window(
-    m_connection, XCB_COPY_FROM_PARENT, frame, *m_root, geomattr->x, geomattr->y + top_strut, 
+    m_connection, XCB_COPY_FROM_PARENT, frame, *m_root, geomattr->x, geomattr->y, 
     geomattr->width, geomattr->height,
     border_width, XCB_WINDOW_CLASS_INPUT_OUTPUT, XCB_COPY_FROM_PARENT , mask, values
   );
@@ -317,9 +309,6 @@ void WindowManager::frame(xcb_window_t window, bool was_created_before_window_ma
   free(winattr);
   free(geomattr);
   free(err);
-
-  free(type_reply);
-  free(strut_reply);
 }
 
 void WindowManager::unframe(xcb_window_t window) {
@@ -331,4 +320,35 @@ void WindowManager::unframe(xcb_window_t window) {
   m_clients.erase(window);
 
   std::cout << "Unframed window" << std::endl;
+}
+
+
+void WindowManager::get_workarea(uint32_t* x, uint32_t* y, uint32_t* width, uint32_t* height) {
+  *x = 0;
+  *y = 0;
+  *width = m_screen->width_in_pixels;
+  *height = m_screen->height_in_pixels;
+  
+  // Iterate through all windows to find struts
+  for (const auto& pair : m_clients) {
+    xcb_window_t win = pair.first;
+    
+    xcb_atom_t strut_partial = get_atom(m_connection, "_NET_WM_STRUT_PARTIAL");
+    xcb_get_property_cookie_t cookie = xcb_get_property(
+        m_connection, 0, win, strut_partial, 
+        XCB_ATOM_CARDINAL, 0, 12
+    );
+    
+    xcb_get_property_reply_t* reply = xcb_get_property_reply(m_connection, cookie, NULL);
+        
+    if (reply && xcb_get_property_value_length(reply) >= 12 * 4) {
+      uint32_t* struts = (uint32_t*)xcb_get_property_value(reply);
+      
+      // Adjust workarea based on struts
+      *y += struts[2];               // top
+      *height -= struts[2];          // adjust for top
+    }
+    
+    free(reply);
+  }
 }

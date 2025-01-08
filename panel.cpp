@@ -48,6 +48,7 @@ void Panel::run() {
   while ((event = xcb_wait_for_event(m_connection))) {
     switch (event->response_type & ~0x80) {
       case XCB_EXPOSE:
+        draw_text_with_font(m_connection, m_screen, panel, 12, PANEL_SIZE / 2, "System 7", "9x15");
         xcb_flush(m_connection);
         break;
 
@@ -65,12 +66,11 @@ void Panel::set_panel_window_type(xcb_connection_t* connection, xcb_window_t win
   
   xcb_change_property(connection, XCB_PROP_MODE_REPLACE, window, window_type, XCB_ATOM_ATOM, 32, 1, &window_type_dock);
   
-  // Set struts (reserve space at top)
-  uint32_t struts[12] = {0};
-  struts[2] = 0;  // top strut
-  struts[8] = 0;  // top start x
-  struts[9] = m_screen->width_in_pixels; // top end x
-  
+  uint32_t struts[12] = { 0 };
+  struts[2] = PANEL_SIZE + BORDER_SIZE;
+  struts[8] = 0;
+  struts[9] = m_width;
+
   xcb_atom_t strut_partial = get_atom(connection, "_NET_WM_STRUT_PARTIAL");
   
   xcb_change_property(

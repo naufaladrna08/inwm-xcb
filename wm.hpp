@@ -47,6 +47,7 @@ class WindowManager {
 
 		void frame(xcb_window_t window, bool was_created_before_window_manager);
 		void unframe(xcb_window_t window);
+		void get_workarea(uint32_t* x, uint32_t* y, uint32_t* width, uint32_t* height);
 		
 	private:
 		WindowManager(xcb_connection_t* conn);
