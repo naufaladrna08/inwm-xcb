@@ -11,12 +11,15 @@
 extern "C" {
 	#include <xcb/xcb.h>
 	#include <xcb/xcb_atom.h>
+	#include <xcb/xcb_ewmh.h>
+	#include <stdlib.h>
+	#include <string.h>
 }
 
 #include <iostream>
 #include <memory>
 #include <unordered_map>
-#include <cstring>
+#include <core.hpp>
 
 class WindowManager {
 	public:
@@ -44,7 +47,6 @@ class WindowManager {
 
 		void frame(xcb_window_t window, bool was_created_before_window_manager);
 		void unframe(xcb_window_t window);
-		xcb_atom_t get_atom(const char* atom_name);
 		
 	private:
 		WindowManager(xcb_connection_t* conn);

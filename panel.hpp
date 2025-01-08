@@ -7,6 +7,7 @@ extern "C" {
 #include <iostream>
 #include <cstdlib>
 #include <cstring>
+#include <core.hpp>
 
 class Panel {
   public:

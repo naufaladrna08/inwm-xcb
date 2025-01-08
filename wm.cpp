@@ -30,6 +30,10 @@ WindowManager::~WindowManager() {
 
 void WindowManager::run() {
   m_wm_detected = false;
+
+  xcb_ewmh_connection_t* m_ewmh = (xcb_ewmh_connection_t*) malloc(sizeof(xcb_ewmh_connection_t));
+	if (xcb_ewmh_init_atoms_replies(m_ewmh, xcb_ewmh_init_atoms(m_connection, m_ewmh), NULL) == 0)
+    std::cerr << "Failed to initialize EWMH atoms" << std::endl;
   
   uint32_t root_mask   = XCB_CW_BACK_PIXEL | XCB_CW_EVENT_MASK;
   uint32_t mask_val[2] = { 
@@ -113,36 +117,7 @@ void WindowManager::check_another_wm(xcb_connection_t* conn, xcb_generic_error_t
 }
 
 void WindowManager::on_create_notify(xcb_create_notify_event_t* event) {
-  // Check if the window is override-redirect (likely a system window)
-  if (event->override_redirect) {
-    return;
-  }
 
-  // Query the window type (optional, if `_NET_WM_WINDOW_TYPE` is supported)
-  xcb_atom_t net_wm_window_type = get_atom("_NET_WM_WINDOW_TYPE");
-  xcb_atom_t net_wm_window_type_panel = get_atom("_NET_WM_WINDOW_TYPE_DOCK");
-
-  xcb_get_property_cookie_t prop_cookie = xcb_get_property(
-    m_connection, 0, event->window, net_wm_window_type,
-    XCB_ATOM_ATOM, 0, 32
-  );
-
-  xcb_get_property_reply_t* prop_reply = xcb_get_property_reply(m_connection, prop_cookie, NULL);
-
-  if (prop_reply && prop_reply->type == XCB_ATOM_ATOM) {
-    xcb_atom_t* type = (xcb_atom_t*) xcb_get_property_value(prop_reply);
-    if (type && *type == net_wm_window_type_panel) {
-      free(prop_reply);
-      return; // Skip adjusting the panel's position
-    }
-  }
-  free(prop_reply);
-
-  // Shift the new window's y position to 32 (Panel's height) + 2 (Panel's border)
-  uint32_t values[2] = { event->x, 32 + 2 };
-  uint16_t mask = XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y;
-  xcb_configure_window(m_connection, event->window, mask, values);
-  xcb_flush(m_connection);
 }
 
 void WindowManager::on_destroy_notify(xcb_destroy_notify_event_t* event) {
@@ -253,6 +228,23 @@ void WindowManager::frame(xcb_window_t window, bool was_created_before_window_ma
   const uint64_t border_color = 0xFF222222;
   const uint64_t back_color = 0xFF222222;
 
+  // Get window type
+  xcb_atom_t window_type = get_atom(m_connection, "_NET_WM_WINDOW_TYPE");
+  xcb_get_property_cookie_t type_cookie = xcb_get_property(m_connection, 0, window, window_type, XCB_ATOM_ATOM, 0, 1);
+  
+  // Get struts
+  xcb_atom_t strut_partial = get_atom(m_connection, "_NET_WM_STRUT_PARTIAL");
+  xcb_get_property_cookie_t strut_cookie = xcb_get_property(m_connection, 0, window, strut_partial, XCB_ATOM_CARDINAL, 0, 12);
+      
+  xcb_get_property_reply_t* type_reply = xcb_get_property_reply(m_connection, type_cookie, NULL);
+  xcb_get_property_reply_t* strut_reply = xcb_get_property_reply(m_connection, strut_cookie, NULL);
+
+  uint32_t top_strut = 0;
+  if (strut_reply && xcb_get_property_value_length(strut_reply) >= 12 * 4) {
+    uint32_t* struts = (uint32_t*)xcb_get_property_value(strut_reply);
+    top_strut = struts[2];  // Top strut
+  }
+  
   /* Retreive window attribute for the frame */
   xcb_get_window_attributes_cookie_t winattr_cookie = xcb_get_window_attributes(m_connection, window);
   xcb_get_geometry_cookie_t geom_cookie =  xcb_get_geometry(m_connection, window);
@@ -295,7 +287,7 @@ void WindowManager::frame(xcb_window_t window, bool was_created_before_window_ma
   
   xcb_window_t frame = xcb_generate_id(m_connection);
   xcb_void_cookie_t framewin_cookie = xcb_create_window(
-    m_connection, XCB_COPY_FROM_PARENT, frame, *m_root, geomattr->x, geomattr->y, 
+    m_connection, XCB_COPY_FROM_PARENT, frame, *m_root, geomattr->x, geomattr->y + top_strut, 
     geomattr->width, geomattr->height,
     border_width, XCB_WINDOW_CLASS_INPUT_OUTPUT, XCB_COPY_FROM_PARENT , mask, values
   );
@@ -325,6 +317,9 @@ void WindowManager::frame(xcb_window_t window, bool was_created_before_window_ma
   free(winattr);
   free(geomattr);
   free(err);
+
+  free(type_reply);
+  free(strut_reply);
 }
 
 void WindowManager::unframe(xcb_window_t window) {
@@ -336,19 +331,4 @@ void WindowManager::unframe(xcb_window_t window) {
   m_clients.erase(window);
 
   std::cout << "Unframed window" << std::endl;
-}
-
-xcb_atom_t WindowManager::get_atom(const char* atom_name) {
-  xcb_intern_atom_cookie_t cookie = xcb_intern_atom(m_connection, 0, strlen(atom_name), atom_name);
-  xcb_intern_atom_reply_t* reply = xcb_intern_atom_reply(m_connection, cookie, NULL);
-
-  if (!reply) {
-    std::cerr << "An error occured when get atom" << std::endl
-              << "Please contact your IT support and make sure you'll get your answer" << std::endl;
-    return XCB_ATOM_NONE;
-  }
-
-  xcb_atom_t atom = reply->atom;
-  free(reply);
-  return atom;
 }

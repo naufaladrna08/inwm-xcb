@@ -25,7 +25,7 @@ void Panel::run() {
   uint32_t mask = XCB_CW_BACK_PIXEL | XCB_CW_EVENT_MASK;
   uint32_t val[2] = { 0xFFDEDEDE, XCB_EVENT_MASK_EXPOSURE };
   xcb_void_cookie_t panel_cookie = xcb_create_window_checked(
-    m_connection, XCB_COPY_FROM_PARENT, panel, m_root, 0, 0, m_width, 32, 2, 
+    m_connection, XCB_COPY_FROM_PARENT, panel, m_root, 0, 0, m_width, PANEL_SIZE, BORDER_SIZE, 
     XCB_WINDOW_CLASS_INPUT_OUTPUT, m_screen->root_visual, mask, val
   );
 
@@ -48,7 +48,7 @@ void Panel::run() {
   while ((event = xcb_wait_for_event(m_connection))) {
     switch (event->response_type & ~0x80) {
       case XCB_EXPOSE:
-        std::cout << "Drawing...\n";
+        xcb_flush(m_connection);
         break;
 
       default: break;
@@ -59,19 +59,32 @@ void Panel::run() {
 }
 
 void Panel::set_panel_window_type(xcb_connection_t* connection, xcb_window_t window) {
-  xcb_intern_atom_cookie_t cookie = xcb_intern_atom(connection, 0, strlen("_NET_WM_WINDOW_TYPE"), "_NET_WM_WINDOW_TYPE");
-  xcb_intern_atom_reply_t* reply = xcb_intern_atom_reply(connection, cookie, NULL);
-
-  xcb_intern_atom_cookie_t dock_cookie = xcb_intern_atom(connection, 0, strlen("_NET_WM_WINDOW_TYPE_DOCK"), "_NET_WM_WINDOW_TYPE_DOCK");
-  xcb_intern_atom_reply_t* dock_reply = xcb_intern_atom_reply(connection, dock_cookie, NULL);
-
-  if (reply && dock_reply) {
-    xcb_change_property(connection, XCB_PROP_MODE_REPLACE, window,
-                        reply->atom, XCB_ATOM_ATOM, 32, 1, &dock_reply->atom);
-  }
-
-  free(reply);
-  free(dock_reply);
+  // Set dock type
+  xcb_atom_t window_type = get_atom(connection, "_NET_WM_WINDOW_TYPE");
+  xcb_atom_t window_type_dock = get_atom(connection, "_NET_WM_WINDOW_TYPE_DOCK");
+  
+  xcb_change_property(connection, XCB_PROP_MODE_REPLACE, window, window_type, XCB_ATOM_ATOM, 32, 1, &window_type_dock);
+  
+  // Set struts (reserve space at top)
+  uint32_t struts[12] = {0};
+  struts[2] = 0;  // top strut
+  struts[8] = 0;  // top start x
+  struts[9] = m_screen->width_in_pixels; // top end x
+  
+  xcb_atom_t strut_partial = get_atom(connection, "_NET_WM_STRUT_PARTIAL");
+  
+  xcb_change_property(
+    connection,
+    XCB_PROP_MODE_REPLACE,
+    window,
+    strut_partial,
+    XCB_ATOM_CARDINAL,
+    32,
+    12,
+    struts
+  );
+  
+  xcb_flush(connection);
 }
 
 int main(int argc, char const *argv[]) {
